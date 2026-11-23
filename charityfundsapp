@@ -1,0 +1,173 @@
+"use strict";
+const KEY = "cfms-v1";
+const today = new Date().toISOString().slice(0, 10);
+
+const seed = () => ({
+  me: null,
+  users: {
+    admin: { p: "admin123", role: "admin", name: "Asha Rao" },
+    finance: { p: "fin123", role: "finance", name: "Ravi Menon" },
+    donor: { p: "donor123", role: "donor", name: "Meera Iyer", did: 1 },
+    help: { p: "help123", role: "beneficiary", name: "Kumar S", bid: 1 }
+  },
+  camp: [
+    { id: 1, name: "Village School Kits", desc: "Books and uniforms for 200 children.", target: 60000 },
+    { id: 2, name: "Winter Blankets Drive", desc: "Blankets for families without shelter.", target: 40000 },
+    { id: 3, name: "Medical Aid Fund", desc: "Emergency treatment support.", target: 80000 }
+  ],
+  donors: [
+    { id: 1, name: "Meera Iyer", email: "meera@example.com", phone: "98450 11122", address: "Bengaluru" },
+    { id: 2, name: "Arjun Nair", email: "arjun@example.com", phone: "99001 22334", address: "Kochi" },
+    { id: 3, name: "Sana Khan", email: "sana@example.com", phone: "90080 45566", address: "Hyderabad" }
+  ],
+  don: [
+    { id: 1, did: 1, cid: 1, amount: 10000, date: "2026-10-02", rc: "RCP-1001" },
+    { id: 2, did: 2, cid: 1, amount: 15000, date: "2026-10-09", rc: "RCP-1002" },
+    { id: 3, did: 3, cid: 2, amount: 5000, date: "2026-10-18", rc: "RCP-1003" },
+    { id: 4, did: 1, cid: 3, amount: 12000, date: "2026-10-27", rc: "RCP-1004" },
+    { id: 5, did: 2, cid: 2, amount: 8000, date: "2026-11-05", rc: "RCP-1005" }
+  ],
+  ben: [
+    { id: 1, name: "Kumar S", contact: "kumar@example.com", need: "School fees for two children", status: "Approved" },
+    { id: 2, name: "Lakshmi D", contact: "98765 43210", need: "Winter blankets for family of six", status: "Pending" }
+  ],
+  alloc: [
+    { id: 1, cid: 1, bid: 1, amount: 6000, date: "2026-10-20" },
+    { id: 2, cid: 2, bid: 1, amount: 6000, date: "2026-11-08" }
+  ],
+  exp: [
+    { id: 1, cid: 1, amount: 4000, date: "2026-10-22", desc: "Printing and transport of school kits" },
+    { id: 2, cid: 2, amount: 2000, date: "2026-11-09", desc: "Blanket packaging" }
+  ]
+});
+
+let D = load();
+function load() { try { const s = localStorage.getItem(KEY); if (s) return JSON.parse(s); } catch (e) {} return seed(); }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(D)); } catch (e) {} }
+
+const NAV = {
+  admin: [["dashboard", "Dashboard"], ["campaigns", "Campaigns"], ["donors", "Donors"], ["donations", "Donations"], ["beneficiaries", "Beneficiaries"], ["allocation", "Allocation"], ["expenses", "Expenses"], ["reports", "Reports"]],
+  finance: [["dashboard", "Dashboard"], ["donations", "Donations"], ["allocation", "Allocation"], ["expenses", "Expenses"], ["reports", "Reports"]],
+  donor: [["campaigns", "Campaigns"], ["my-donations", "My donations"]],
+  beneficiary: [["status", "My assistance"]]
+};
+
+const $ = id => document.getElementById(id);
+const val = id => $(id).value.trim();
+const sum = a => a.reduce((s, x) => s + x.amount, 0);
+const bal = () => sum(D.don) - sum(D.alloc) - sum(D.exp);
+const fmt = n => "₹" + n.toLocaleString("en-IN");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const cn = id => (D.camp.find(c => c.id == id) || {}).name || "";
+const dn = id => (D.donors.find(c => c.id == id) || {}).name || "";
+const bn = id => (D.ben.find(c => c.id == id) || {}).name || "";
+const nid = a => a.length ? Math.max(...a.map(x => x.id)) + 1 : 1;
+const campOpts = () => D.camp.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+const tbl = (h, rows) => `<div class="scroll"><table><tr>${h.map(x => `<th>${x}</th>`).join("")}</tr>${rows || `<tr><td colspan="${h.length}">Nothing here yet.</td></tr>`}</table></div>`;
+function toast(m) { const t = $("toast"); t.textContent = m; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 3500); }
+function pos(id, label) { const n = parseFloat($(id).value); if (!(n > 0)) { toast(label + " must be a positive number."); return null; } return n; }
+function go(r) { location.hash = "#/" + r; }
+
+/* ---------- routing ---------- */
+function route() {
+  const parts = location.hash.replace(/^#\/?/, "").split("/"), r = parts[0] || "";
+  if (!D.me) { authScreen(r === "register" ? "register" : "login"); return; }
+  const allowed = NAV[D.me.role].map(n => n[0]);
+  if (r === "" || r === "login" || r === "register") { go(allowed[0]); return; }
+  if (r === "receipt") { show("receipt", parts[1]); return; }
+  show(allowed.includes(r) ? r : "denied");
+}
+window.addEventListener("hashchange", route);
+
+function show(v, arg) {
+  const role = D.me.role;
+  const cur = v === "receipt" ? (role === "donor" ? "my-donations" : "donations") : v;
+  const item = NAV[role].find(n => n[0] === cur);
+  document.title = (item ? item[1] : "Charity Funds") + " · Charity Funds Management System";
+  $("who").innerHTML = `${esc(D.me.name)} (${role}) <button class="btn s" style="margin:0 0 0 .5rem" onclick="logout()">Sign out</button>`;
+  $("nav").innerHTML = NAV[role].map(n => `<a href="#/${n[0]}"${n[0] === cur ? ' aria-current="page"' : ""}>${n[1]}</a>`).join("");
+  $("app").innerHTML = view(v, arg);
+}
+
+/* ---------- login, register, logout ---------- */
+function authScreen(mode) {
+  $("who").innerHTML = ""; $("nav").innerHTML = "";
+  document.title = (mode === "register" ? "Register" : "Sign in") + " · Charity Funds Management System";
+  $("app").innerHTML = mode === "register"
+    ? `<div class="card login"><h2>Create donor account</h2><label for="rn">Full name</label><input id="rn"><label for="re">Email</label><input id="re" type="email"><label for="rt">Phone</label><input id="rt"><label for="ru">Username</label><input id="ru" autocomplete="username"><label for="rp">Password (6+ characters)</label><input id="rp" type="password" autocomplete="new-password"><button class="btn" onclick="register()">Register</button><p>Already registered? <a href="#/">Sign in</a></p></div>`
+    : `<div class="card login"><h2>Sign in</h2><label for="u">Username</label><input id="u" autocomplete="username"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"><button class="btn" onclick="login()">Sign in</button><p id="err" class="err" role="alert"></p><p>New donor? <a href="#/register">Register</a></p><p class="demo">Demo logins: <button class="lnk" onclick="fill('admin')">admin</button> · <button class="lnk" onclick="fill('finance')">finance</button> · <button class="lnk" onclick="fill('donor')">donor</button> · <button class="lnk" onclick="fill('help')">help</button> (beneficiary)</p><p class="demo"><button class="lnk" onclick="resetData()">Reset demo data</button></p></div>`;
+}
+function fill(k) { $("u").value = k; $("p").value = D.users[k].p; }
+function login() {
+  const k = val("u").toLowerCase(), u = D.users[k];
+  if (!u || u.p !== $("p").value) { $("err").textContent = "Wrong username or password."; return; }
+  D.me = { ...u, key: k }; save(); go(NAV[u.role][0][0]); route();
+}
+function logout() { D.me = null; save(); location.hash = "#/"; route(); }
+function register() {
+  const n = val("rn"), e = val("re"), k = val("ru").toLowerCase(), p = $("rp").value;
+  if (!n || !e || !k) return toast("Name, email and username are required.");
+  if (p.length < 6) return toast("Password must be at least 6 characters.");
+  if (D.users[k]) return toast("That username is taken. Choose another.");
+  const id = nid(D.donors);
+  D.donors.push({ id, name: n, email: e, phone: val("rt"), address: "" });
+  D.users[k] = { p, role: "donor", name: n, did: id };
+  save(); toast("Account created. Sign in as " + k + "."); go("");
+}
+function resetData() { try { localStorage.removeItem(KEY); } catch (e) {} D = seed(); toast("Demo data reset."); route(); }
+
+/* ---------- views ---------- */
+function view(v, arg) {
+  const r = D.me.role;
+  if (v === "denied") return `<div class="card"><h2>Access denied</h2><p>Your role cannot open this page.</p><a class="btn" href="#/${NAV[r][0][0]}">Go to my page</a></div>`;
+  if (v === "receipt") {
+    const d = D.don.find(x => x.id == arg);
+    if (!d || (r === "donor" && d.did !== D.me.did)) return view("denied");
+    return `<div class="card" style="max-width:460px;margin:0 auto;border:2px dashed var(--pri)"><h2>Donation receipt</h2><p><b>${d.rc}</b></p><p>Date: ${d.date}<br>Donor: ${esc(dn(d.did))}<br>Campaign: ${esc(cn(d.cid))}</p><div class="eq"><div class="res">${fmt(d.amount)}<small>Amount received</small></div></div><p>Thank you for your generosity.</p><button class="btn" onclick="window.print()">Print receipt</button> <a class="btn s" href="#/${r === "donor" ? "my-donations" : "donations"}">Back</a></div>`;
+  }
+  if (v === "dashboard") {
+    const a = sum(D.alloc), e = sum(D.exp);
+    return `<div class="card"><div class="eq"><div>${fmt(sum(D.don))}<small>Donations received</small></div><div>−</div><div>${fmt(a + e)}<small>Allocated and spent</small></div><div>=</div><div class="res">${fmt(bal())}<small>Available balance</small></div></div></div>
+    <div class="grid"><div class="card stat"><b>${D.donors.length}</b><span>Donors</span></div><div class="card stat"><b>${D.camp.length}</b><span>Campaigns</span></div><div class="card stat"><b>${fmt(a)}</b><span>Allocated</span></div><div class="card stat"><b>${fmt(e)}</b><span>Expenses</span></div></div>
+    <div class="card"><h3>Campaign collections</h3>${D.camp.map(c => { const t = sum(D.don.filter(d => d.cid == c.id)); return `<div>${esc(c.name)} — ${fmt(t)} of ${fmt(c.target)}</div><div class="bar"><i style="width:${Math.min(100, t / c.target * 100)}%"></i></div>`; }).join("")}</div>`;
+  }
+  if (v === "campaigns") {
+    const add = r === "admin" ? `<div class="card"><h3>New campaign</h3><label for="cn">Name</label><input id="cn"><label for="cd">Description</label><input id="cd"><label for="ct">Target amount (₹)</label><input id="ct" type="number" min="1"><button class="btn" onclick="addCamp()">Create campaign</button></div>` : "";
+    return `<h2>Campaigns</h2>${add}<div class="two">${D.camp.map(c => { const t = sum(D.don.filter(d => d.cid == c.id)); return `<div class="card"><h3>${esc(c.name)}</h3><p>${esc(c.desc)}</p><div class="bar"><i style="width:${Math.min(100, t / c.target * 100)}%"></i></div><small>${fmt(t)} raised of ${fmt(c.target)}</small>${r === "donor" ? `<label for="a${c.id}">Donation amount (₹)</label><input id="a${c.id}" type="number" min="1"><button class="btn" onclick="donate(${c.id})">Donate</button>` : ""}</div>`; }).join("")}</div>`;
+  }
+  if (v === "donors") return `<h2>Donors</h2><div class="card"><h3>Add donor</h3><div class="two"><div><label for="dn">Name</label><input id="dn"></div><div><label for="de">Email</label><input id="de" type="email"></div><div><label for="dp">Phone</label><input id="dp"></div><div><label for="da">Address</label><input id="da"></div></div><button class="btn" onclick="addDonor()">Add donor</button></div>
+    <div class="card"><label for="sq">Search donors</label><input id="sq" oninput="filt(this.value)" placeholder="Name, email or phone">${tbl(["Name", "Email", "Phone", "Address", "Total given"], D.donors.map(d => `<tr class="r"><td>${esc(d.name)}</td><td>${esc(d.email)}</td><td>${esc(d.phone)}</td><td>${esc(d.address)}</td><td>${fmt(sum(D.don.filter(x => x.did == d.id)))}</td></tr>`).join(""))}</div>`;
+  if (v === "donations") return `<h2>Donations</h2><div class="card">${tbl(["Receipt", "Date", "Donor", "Campaign", "Amount"], D.don.slice().reverse().map(d => `<tr><td><a href="#/receipt/${d.id}">${d.rc}</a></td><td>${d.date}</td><td>${esc(dn(d.did))}</td><td>${esc(cn(d.cid))}</td><td>${fmt(d.amount)}</td></tr>`).join(""))}</div>`;
+  if (v === "my-donations") {
+    const m = D.don.filter(d => d.did == D.me.did);
+    return `<h2>My donations</h2><div class="card"><p>Total given: <b>${fmt(sum(m))}</b></p>${tbl(["Receipt", "Date", "Campaign", "Amount"], m.slice().reverse().map(d => `<tr><td><a href="#/receipt/${d.id}">${d.rc}</a></td><td>${d.date}</td><td>${esc(cn(d.cid))}</td><td>${fmt(d.amount)}</td></tr>`).join(""))}</div>`;
+  }
+  if (v === "beneficiaries") return `<h2>Beneficiaries</h2><div class="card">${tbl(["Name", "Contact", "Need", "Status", "Action"], D.ben.map(b => `<tr><td>${esc(b.name)}</td><td>${esc(b.contact)}</td><td>${esc(b.need)}</td><td><span class="tag ${b.status}">${b.status}</span></td><td>${b.status === "Pending" ? `<button class="btn s" onclick="setBen(${b.id},'Approved')">Approve</button><button class="btn s" onclick="setBen(${b.id},'Rejected')">Reject</button>` : ""}</td></tr>`).join(""))}</div>`;
+  if (v === "status") {
+    const m = D.ben.filter(b => b.id == D.me.bid || b.owner === D.me.key);
+    return `<h2>My assistance</h2>${m.map(b => { const got = sum(D.alloc.filter(a => a.bid == b.id)); return `<div class="card"><h3>${esc(b.need)}</h3><span class="tag ${b.status}">${b.status}</span>${b.status === "Approved" ? `<p>Support allocated so far: <b>${fmt(got)}</b></p>` : ""}</div>`; }).join("")}<div class="card"><h3>Submit details for support</h3><label for="bn">Your name</label><input id="bn" value="${esc(D.me.name)}"><label for="bc">Contact</label><input id="bc"><label for="bd">What do you need help with?</label><textarea id="bd" rows="3"></textarea><button class="btn" onclick="addBen()">Submit request</button></div>`;
+  }
+  if (v === "allocation") {
+    const ok = D.ben.filter(b => b.status === "Approved");
+    return `<h2>Fund allocation</h2><div class="card"><p>Available balance: <b>${fmt(bal())}</b></p><div class="two"><div><label for="ac">Campaign</label><select id="ac">${campOpts()}</select></div><div><label for="ab">Beneficiary</label><select id="ab">${ok.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select></div><div><label for="am">Amount (₹)</label><input id="am" type="number" min="1"></div></div><button class="btn" onclick="addAlloc()">Save allocation</button></div><div class="card">${tbl(["Date", "Campaign", "Beneficiary", "Amount"], D.alloc.slice().reverse().map(a => `<tr><td>${a.date}</td><td>${esc(cn(a.cid))}</td><td>${esc(bn(a.bid))}</td><td>${fmt(a.amount)}</td></tr>`).join(""))}</div>`;
+  }
+  if (v === "expenses") return `<h2>Expenses</h2><div class="card"><p>Available balance: <b>${fmt(bal())}</b></p><div class="two"><div><label for="ec">Campaign</label><select id="ec">${campOpts()}</select></div><div><label for="em">Amount (₹)</label><input id="em" type="number" min="1"></div></div><label for="ed">Description</label><input id="ed"><button class="btn" onclick="addExp()">Save expense</button></div><div class="card">${tbl(["Date", "Campaign", "Description", "Amount"], D.exp.slice().reverse().map(a => `<tr><td>${a.date}</td><td>${esc(cn(a.cid))}</td><td>${esc(a.desc)}</td><td>${fmt(a.amount)}</td></tr>`).join(""))}</div>`;
+  if (v === "reports") {
+    const byD = D.donors.map(d => `<tr><td>${esc(d.name)}</td><td>${D.don.filter(x => x.did == d.id).length}</td><td>${fmt(sum(D.don.filter(x => x.did == d.id)))}</td></tr>`).join("");
+    const byC = D.camp.map(c => { const i = sum(D.don.filter(x => x.cid == c.id)), a = sum(D.alloc.filter(x => x.cid == c.id)), e = sum(D.exp.filter(x => x.cid == c.id)); return `<tr><td>${esc(c.name)}</td><td>${fmt(i)}</td><td>${fmt(a)}</td><td>${fmt(e)}</td><td>${fmt(i - a - e)}</td></tr>`; }).join("");
+    return `<h2>Reports</h2><div class="card"><h3>Fund report by campaign</h3>${tbl(["Campaign", "Collected", "Allocated", "Expenses", "Remaining"], byC)}<p><b>Total balance: ${fmt(bal())}</b></p></div><div class="card"><h3>Donation report by donor</h3>${tbl(["Donor", "Donations", "Total"], byD)}</div><button class="btn" onclick="window.print()">Print report</button>`;
+  }
+  return "";
+}
+
+/* ---------- actions ---------- */
+function filt(q) { q = q.toLowerCase(); document.querySelectorAll("tr.r").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); }
+function addCamp() { const n = val("cn"), t = pos("ct", "Target"); if (!n) return toast("Enter a campaign name."); if (!t) return; D.camp.push({ id: nid(D.camp), name: n, desc: val("cd"), target: t }); save(); toast("Campaign created."); route(); }
+function donate(c) { const a = pos("a" + c, "Donation amount"); if (!a) return; const id = nid(D.don), rc = "RCP-" + (1000 + id); D.don.push({ id, did: D.me.did, cid: c, amount: a, date: today, rc }); save(); toast("Donation saved. Receipt " + rc + " generated."); go("receipt/" + id); }
+function addDonor() { const n = val("dn"), e = val("de"); if (!n || !e) return toast("Name and email are required."); D.donors.push({ id: nid(D.donors), name: n, email: e, phone: val("dp"), address: val("da") }); save(); toast("Donor added."); route(); }
+function setBen(id, s) { D.ben.find(b => b.id == id).status = s; save(); toast("Request " + s.toLowerCase() + "."); route(); }
+function addBen() { const d = val("bd"); if (!d) return toast("Describe the help you need."); D.ben.push({ id: nid(D.ben), name: val("bn"), contact: val("bc"), need: d, status: "Pending", owner: D.me.key }); save(); toast("Request submitted. An administrator will review it."); route(); }
+function addAlloc() { const a = pos("am", "Amount"); if (!a) return; if (!$("ab").value) return toast("Approve a beneficiary first."); if (a > bal()) return toast("Amount is more than the available balance of " + fmt(bal()) + "."); D.alloc.push({ id: nid(D.alloc), cid: +$("ac").value, bid: +$("ab").value, amount: a, date: today }); save(); toast("Allocation saved."); route(); }
+function addExp() { const a = pos("em", "Amount"); if (!a) return; if (a > bal()) return toast("Amount is more than the available balance of " + fmt(bal()) + "."); D.exp.push({ id: nid(D.exp), cid: +$("ec").value, amount: a, date: today, desc: val("ed") || "Expense" }); save(); toast("Expense saved."); route(); }
+
+route();

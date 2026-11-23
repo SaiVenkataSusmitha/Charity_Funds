@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Record donations, allocate funds, track expenses and see exactly where every rupee goes.">
+<title>Charity Funds Management System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Source+Sans+3:wght@400;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#app" onclick="event.preventDefault();document.getElementById('app').focus()">Skip to content</a>
+<header>
+  <a class="brand" href="#/">₹ Open Hands<span>Charity Funds</span></a>
+  <div id="who"></div>
+</header>
+<nav id="nav" aria-label="Main"></nav>
+<main id="app" tabindex="-1"></main>
+<footer>Charity Funds Management System · Software Engineering project demo. Data is stored in your browser only.</footer>
+<div id="toast" role="status"></div>
+<script src="app.js"></script>
+</body>
+</html>
